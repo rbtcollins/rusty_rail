@@ -42,6 +42,7 @@ pub fn poll(pollfds: &mut Vec<libc::pollfd>) -> Result<u8, BrokenRail> {
     }
 }
 
+
 fn pollfd(fd: i32) -> libc::pollfd {
     libc::pollfd {
         fd: fd,
@@ -49,7 +50,6 @@ fn pollfd(fd: i32) -> libc::pollfd {
         revents: 0,
     }
 }
-
 
 
 fn stuff() -> Result<(), BrokenRail> {
@@ -75,9 +75,9 @@ fn stuff() -> Result<(), BrokenRail> {
             }
         }
         // println!("Host -> Wire");
-        move_packets(&mut nm_in_host, &mut nm_in);
+        try!(move_packets(&mut nm_in_host, &mut nm_in));
         // println!("Wire -> Host");
-        move_packets(&mut nm_in, &mut nm_in_host);
+        try!(move_packets(&mut nm_in, &mut nm_in_host));
     }
 }
 

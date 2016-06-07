@@ -9,6 +9,7 @@ use std::io;
 pub enum BrokenRail {
     Netmap(netmap::NetmapError),
     IO(io::Error),
+    BadPacket,
 }
 
 impl fmt::Display for BrokenRail {
@@ -16,6 +17,7 @@ impl fmt::Display for BrokenRail {
         match *self {
             BrokenRail::Netmap(ref err) => err.fmt(f),
             BrokenRail::IO(ref err) => err.fmt(f),
+            BrokenRail::BadPacket => write!(f, "Couldn't handle packet"),
         }
     }
 }
@@ -25,6 +27,7 @@ impl error::Error for BrokenRail {
         match *self {
             BrokenRail::Netmap(ref err) => err.description(),
             BrokenRail::IO(ref err) => err.description(),
+            BrokenRail::BadPacket => "Couldn't handle packet",
         }
     }
 
@@ -32,6 +35,7 @@ impl error::Error for BrokenRail {
         match *self {
             BrokenRail::Netmap(ref err) => Some(err),
             BrokenRail::IO(ref err) => Some(err),
+            BrokenRail::BadPacket => None,
         }
     }
 }
