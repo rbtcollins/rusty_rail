@@ -4,9 +4,17 @@ version = "0.1.0"
 authors = ["Robert Collins <robertc@robertcollins.net>"]
 
 [dependencies]
+libc="*"
 
-[dependencies.netmap_sys]
-version = "0.1.0"
+[dependencies.netmap]
+git = "https://github.com/rbtcollins/netmap-rs"
+
+#[dependencies.netmap_sys]
+#version = "0.1.0"
 # Uncomment this line where you wish to use features guarded by the
 # NETMAP_WITH_LIBS macro in C.
-#features = "netmap_with_libs"
+#features = ["netmap_with_libs"]
+
+[dependencies.pnet]
+version = "0.10.0"
+#features = ["netmap"]
