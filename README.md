@@ -31,3 +31,7 @@ git clone XXX
 cargo build
 sudo cargo run
 ```
+
+# License
+
+Apache-2.0.

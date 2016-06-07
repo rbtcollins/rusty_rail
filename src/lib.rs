@@ -1,3 +1,4 @@
+// Copyright (c) 2016 Robert Collins. Licensed under the Apache-2.0 license.
 extern crate netmap;
 
 use netmap::{NetmapSlot, NetmapRing};
