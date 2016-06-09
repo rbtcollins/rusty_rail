@@ -6,10 +6,12 @@ extern crate netmap;
 extern crate rusty_rail;
 
 
+use std::env;
 use std::io;
 
 use netmap::Direction;
 
+use rusty_rail::configuration::Config;
 use rusty_rail::error::BrokenRail;
 use rusty_rail::move_packets;
 
@@ -54,12 +56,13 @@ fn pollfd(fd: i32) -> libc::pollfd {
 
 fn stuff() -> Result<(), BrokenRail> {
     let mut pollfds: Vec<libc::pollfd> = Vec::with_capacity(2);
+    let config = try!(Config::new(env::vars()));
 
-    let mut nm_in_host = try!(netmap::NetmapDescriptor::new("eth0^"));
+    let mut nm_in_host = try!(netmap::NetmapDescriptor::new(&(config.device.clone() + "^")));
     pollfds.push(pollfd(nm_in_host.get_fd()));
     println!("host fd {}", pollfds[0].fd);
 
-    let mut nm_in = try!(netmap::NetmapDescriptor::new("eth0"));
+    let mut nm_in = try!(netmap::NetmapDescriptor::new(&config.device));
     pollfds.push(pollfd(nm_in.get_fd()));
     println!("wire fd {}", pollfds[1].fd);
 

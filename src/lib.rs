@@ -9,6 +9,7 @@ use pnet::packet::ipv4::Ipv4Packet;
 use pnet::packet::Packet;
 use pnet::packet::ip::IpNextHeaderProtocols::Gre;
 
+pub mod configuration;
 pub mod error;
 
 

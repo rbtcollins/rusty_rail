@@ -29,8 +29,15 @@ recommended to manage the build process.
 ```
 git clone XXX
 cargo build
-sudo cargo run
+sudo RR_DEVICE=eth0 cargo run
 ```
+
+# Configuration
+
+Configuration is via environment variables.
+
+* ``RR_DEVICE`` should be the name of the interface to receive and transmit GRE
+  wrapped packets on.
 
 # License
 
