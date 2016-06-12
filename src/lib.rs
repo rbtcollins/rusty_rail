@@ -8,6 +8,7 @@ use pnet::packet::ethernet::EtherTypes::Ipv4;
 use pnet::packet::ipv4::Ipv4Packet;
 use pnet::packet::Packet;
 use pnet::packet::ip::IpNextHeaderProtocols::Gre;
+use pnet::packet::gre;
 
 pub mod configuration;
 pub mod error;
@@ -46,6 +47,23 @@ pub fn move_packets(src: &mut netmap::NetmapDescriptor,
                                         if let Some(ip) = Ipv4Packet::new(packet.payload()) {
                                             match ip.get_next_level_protocol() {
                                                 Gre => {
+                                                    if let Some(gre) =
+                                                           gre::GrePacket::new(ip.payload()) {
+                                                        println!("GRE protocol {:#06X} flags=checksum_present {:?}, routing {:?}, key {:?}, sequence {:?}",
+                                                                 gre.get_protocol_type(), gre.get_checksum_present(), gre.get_routing_present(), gre.get_key_present(), gre.get_sequence_present());
+                                                        match gre.get_protocol_type() {
+                                                            0x0800 => {
+                                                                if let Some(inner_ip) = 
+                                                                        Ipv4Packet::new(gre.payload()) {
+                                                                    println!("Inner IP {:?} {:?}", inner_ip.get_source(), inner_ip.get_destination());
+                                                                }
+                                                            },
+                                                            _ => ()
+                                                        }
+
+                                                    } else {
+                                                        println!("Failed to process GRE packet");
+                                                    }
                                                     // Drop (in future forward
                                                     // println!("packet {:?}",
                                                     //         ip.get_next_level_protocol())
