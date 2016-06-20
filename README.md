@@ -6,7 +6,7 @@ paper](http://research.google.com/pubs/pub44824.html)
 # Current status
 
 Bridges a single interface in full passthrough mode to preserve connections to
-host.
+host, and directs all GRE packets back out the wire interface.
 
 # Installation
 
