@@ -3,14 +3,16 @@ extern crate netmap;
 extern crate pnet;
 
 use std::hash::{Hash, SipHasher, Hasher};
+use std::net::Ipv4Addr;
 
 use netmap::{NetmapSlot, NetmapRing};
-use pnet::packet::ethernet::EthernetPacket;
+use pnet::packet::ethernet::{EthernetPacket, MutableEthernetPacket};
 use pnet::packet::ethernet::EtherTypes::Ipv4;
-use pnet::packet::ipv4::Ipv4Packet;
-use pnet::packet::Packet;
+use pnet::packet::ipv4::{Ipv4Packet, MutableIpv4Packet};
+use pnet::packet::{MutablePacket, Packet};
 use pnet::packet::ip::IpNextHeaderProtocols::Gre;
 use pnet::packet::gre;
+use pnet::util::MacAddr;
 
 pub mod configuration;
 pub mod error;
@@ -41,7 +43,7 @@ fn hash_ipv4_packet(packet: &Ipv4Packet) -> u64 {
 ///
 /// rx_slot_buf is the receipt slot to move from
 /// tx_slot_buf is the transmission slot to move it into
-fn move_packet(rx_slot_buf: (&mut netmap::RxSlot, &[u8]),
+fn move_packet(rx_slot_buf: (&mut netmap::RxSlot, &mut [u8]),
                tx_slot_buf: (&mut netmap::TxSlot, &mut [u8]))
                -> Result<(), error::BrokenRail> {
     // XXX: TODO: zero-copy when possible.
@@ -65,14 +67,12 @@ fn move_packet(rx_slot_buf: (&mut netmap::RxSlot, &[u8]),
 // }
 
 
-type RxSlotBuf<'a> = (&'a mut netmap::RxSlot, &'a [u8]);
+type RxSlotBuf<'a> = (&'a mut netmap::RxSlot, &'a mut [u8]);
 
 #[allow(non_upper_case_globals)]
-/// Determine the interface for a single packet.
+/// Determine the interface (and when appropriate new targets) for a single packet.
 ///
 /// rx_slot_buf is a packet that has been received.
-///
-/// The packet buffer will be updated if necessary (gre rewriting)
 fn examine_one<'a>(rx_slot_buf: RxSlotBuf) -> Result<Direction, error::BrokenRail> {
     let packet = match EthernetPacket::new(rx_slot_buf.1) {
         Some(packet) => packet,
@@ -127,7 +127,11 @@ fn examine_one<'a>(rx_slot_buf: RxSlotBuf) -> Result<Direction, error::BrokenRai
 #[allow(non_upper_case_globals)]
 pub fn move_packets(src: &mut netmap::NetmapDescriptor,
                     dst: &mut netmap::NetmapDescriptor,
-                    mut maybe_wire: Option<&mut netmap::NetmapDescriptor>)
+                    mut maybe_wire: Option<&mut netmap::NetmapDescriptor>,
+                    interface_ipv4: &Ipv4Addr,
+                    interface_mac: &MacAddr,
+                    target_ipv4: &Ipv4Addr,
+                    target_mac: &MacAddr)
                     -> Result<TransferStatus, error::BrokenRail> {
     {
         // We need up to three iterators:
@@ -151,9 +155,9 @@ pub fn move_packets(src: &mut netmap::NetmapDescriptor,
             'rx_slot: loop {
                 match rx_slot_iter.next() {
                     None => break 'rx,
-                    Some(rx_slot_buf) => {
+                    Some((rx_slot, buf)) => {
                         // We have a received packet.
-                        let direction = try!(examine_one((rx_slot_buf.0, rx_slot_buf.1)));
+                        let direction = try!(examine_one((rx_slot, buf)));
                         let maybe_tx_slot_buf = match direction {
                             Direction::Destination => dst_slots.next(),
                             Direction::Drop => continue 'rx_slot,
@@ -164,10 +168,42 @@ pub fn move_packets(src: &mut netmap::NetmapDescriptor,
                                 }
                             }
                         };
+                        if let Direction::Wire = direction {
+                            let mut packet = match MutableEthernetPacket::new(buf) {
+                                Some(packet) => packet,
+                                None => return Err(error::BrokenRail::BadPacket),
+                            };
+                            // We received it, now we're sending it.
+                            {
+                            let t = packet.get_destination();
+                            packet.set_source(t);
+                            }
+                            packet.set_destination(*target_mac);
+                            if let Some(ref mut ip) = MutableIpv4Packet::new(packet.payload_mut()) {
+                                {
+                                    let t = ip.get_destination();
+                                    ip.set_source(t);
+                                }
+                                ip.set_destination(*target_ipv4);
+                                // let tmp_mac = packet.get_source();
+                                // packet.set_source(packet.get_destination());
+                                // packet.set_destination(tmp_mac);
+                                // TODO HERE:
+                                // - update outer source MAC
+                                // - update outer source IP
+                                // - update outer dest MAC
+                                // - update outer dest IP
+                                // profit
+                            } else {
+                                return Err(error::BrokenRail::BadPacket);
+                            }
+                        };
                         if let Some(tx_slot_buf) = maybe_tx_slot_buf {
-                            try!(move_packet(rx_slot_buf, tx_slot_buf));
+                            try!(move_packet((rx_slot, buf), tx_slot_buf));
                         } else {
                             // Couldn't get a tx slot, break out to the event loop.
+                            // We should perhaps instead discard the packet: if we can't transmit
+                            // do we really want to stall entirely?
                             rx_slot_iter.give_back();
                             return Ok(match direction {
                                 Direction::Destination => TransferStatus::BlockedDestination,

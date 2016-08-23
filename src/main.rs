@@ -2,14 +2,17 @@
 extern crate libc;
 
 extern crate netmap;
+extern crate pnet;
 
 extern crate rusty_rail;
 
 
 use std::env;
 use std::io;
+use std::net::{IpAddr, Ipv4Addr};
 
 // use netmap::Direction;
+use pnet::util::{get_network_interfaces, NetworkInterface};
 
 use rusty_rail::configuration::Config;
 use rusty_rail::error::BrokenRail;
@@ -70,10 +73,35 @@ fn device_name(device: &String, suffix: &str) -> String {
 }
 
 
+fn extract_ipv4(interface: &NetworkInterface) -> Result<Ipv4Addr, BrokenRail> {
+
+    if let Some(ref ips) = interface.ips {
+        for ip in ips {
+            if let &IpAddr::V4(ipv4) = ip {
+                println!("{}", ip);
+                return Ok(ipv4);
+            }
+        }
+    }
+    return Err(BrokenRail::NoIPV4Address);
+}
+
+
 fn stuff() -> Result<(), BrokenRail> {
     let mut pollfds: Vec<libc::pollfd> = Vec::with_capacity(2);
     let config = try!(Config::new(env::vars()));
 
+    let interfaces = get_network_interfaces();
+    let interface_names_match = {
+        |iface: &NetworkInterface| iface.name == config.device
+    };
+    let interface = interfaces.into_iter()
+        .filter(interface_names_match)
+        .next()
+        .unwrap();
+    let interface_ipv4 = try!(extract_ipv4(&interface));
+    println!("interface {}", interface.mac_address());
+    let interface_mac = interface.mac_address();
     // netmap-rs iterators lock the whole NetmapDescriptor, so we open two descriptors for the
     // adapter: one RX only, and on TX only. We open a single bidirectional descriptor for the host
     // side as we have no use case today for looping packets back to the host side.
@@ -108,7 +136,13 @@ fn stuff() -> Result<(), BrokenRail> {
             }
         }
         // println!("Host -> Wire");
-        match try!(move_packets(&mut nm_host, &mut nm_out, None)) {
+        match try!(move_packets(&mut nm_host,
+                                &mut nm_out,
+                                None,
+                                &interface_ipv4,
+                                &interface_mac,
+                                &config.target_ip,
+                                &config.target_mac)) {
             TransferStatus::BlockedDestination |
             TransferStatus::BlockedWire => {
                 host_read = false;
@@ -116,8 +150,14 @@ fn stuff() -> Result<(), BrokenRail> {
             }
             TransferStatus::Complete => (),
         }
-        // println!("Wire -> Host");
-        match try!(move_packets(&mut nm_in, &mut nm_host, Some(&mut nm_out))) {
+        // println!("Wire -> Host queue");
+        match try!(move_packets(&mut nm_in,
+                                &mut nm_host,
+                                Some(&mut nm_out),
+                                &interface_ipv4,
+                                &interface_mac,
+                                &config.target_ip,
+                                &config.target_mac)) {
             TransferStatus::BlockedDestination => wire_read = false,
             TransferStatus::BlockedWire => host_read = false,
             TransferStatus::Complete => (),
