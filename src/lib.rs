@@ -14,6 +14,7 @@ use pnet::packet::ip::IpNextHeaderProtocols::Gre;
 use pnet::packet::gre;
 use pnet::util::MacAddr;
 
+pub mod arpcache;
 pub mod configuration;
 pub mod error;
 
