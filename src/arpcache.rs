@@ -17,20 +17,23 @@ pub struct Cache {
 }
 
 impl Cache {
-
-    pub fn new() -> Cache { 
-        Cache {entries: BTreeMap::new()}
+    pub fn new() -> Cache {
+        Cache { entries: BTreeMap::new() }
     }
 
     pub fn lookup<'a>(&'a mut self, addr: &Ipv4Addr) -> Option<&'a MacAddr> {
         self.entries.get(addr).map(|e| &e.mac)
     }
 
-    pub fn add(& mut self, ip: &Ipv4Addr, mac: &MacAddr) {
-        self.entries.insert(*ip, CacheEntry {mac: *mac, expires:SystemTime::now()+Duration::new(30,0)});
+    pub fn add(&mut self, ip: &Ipv4Addr, mac: &MacAddr) {
+        self.entries.insert(*ip,
+                            CacheEntry {
+                                mac: *mac,
+                                expires: SystemTime::now() + Duration::new(30, 0),
+                            });
     }
 
-    pub fn expire(& mut self) {
+    pub fn expire(&mut self) {
         let now = SystemTime::now();
         let mut expired: Vec<Ipv4Addr> = Vec::new();
         for (ip, entry) in self.entries.iter_mut() {
@@ -50,12 +53,16 @@ fn add_and_lookup_expire() {
     let mut c = Cache::new();
     let target_mac = MacAddr::from_str("aa:aa:aa:aa:aa:aa").unwrap();
     let some_ip = Ipv4Addr::from_str("127.0.0.1").unwrap();
-    let past = SystemTime::now() - Duration::new(1,0);
+    let past = SystemTime::now() - Duration::new(1, 0);
     c.add(&some_ip, &target_mac);
     c.lookup(&some_ip).unwrap();
     c.expire();
     c.lookup(&some_ip).unwrap();
-    c.entries.insert(some_ip, CacheEntry {mac: target_mac, expires: past});
+    c.entries.insert(some_ip,
+                     CacheEntry {
+                         mac: target_mac,
+                         expires: past,
+                     });
     c.expire();
     let maybe_ip = c.lookup(&some_ip);
     if let Some(_) = maybe_ip {
