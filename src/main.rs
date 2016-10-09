@@ -12,7 +12,8 @@ use std::io;
 use std::net::{IpAddr, Ipv4Addr};
 
 // use netmap::Direction;
-use pnet::util::{get_network_interfaces, NetworkInterface};
+use pnet::datalink::NetworkInterface;
+use pnet::util::get_network_interfaces;
 
 use rusty_rail::configuration::Config;
 use rusty_rail::error::BrokenRail;
