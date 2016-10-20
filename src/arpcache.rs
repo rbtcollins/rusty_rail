@@ -6,6 +6,10 @@ use std::str::FromStr;
 use std::time::{Duration, SystemTime};
 
 use pnet::util::MacAddr;
+use pnetlink::packet::netlink::NetlinkConnection;
+use pnetlink::packet::route::addr::IpAddr;
+use pnetlink::packet::route::link::Link;
+use pnetlink::packet::route::neighbour::{Neighbour,Neighbours};
 
 pub struct CacheEntry {
     pub mac: MacAddr,
@@ -14,15 +18,49 @@ pub struct CacheEntry {
 
 pub struct Cache {
     pub entries: BTreeMap<Ipv4Addr, CacheEntry>,
+    pub link: Link,
+    pub netlink: NetlinkConnection,
 }
 
 impl Cache {
-    pub fn new() -> Cache {
-        Cache { entries: BTreeMap::new() }
+    pub fn new(link: Link, netlink: NetlinkConnection) -> Cache {
+        Cache {
+            entries: BTreeMap::new(),
+            link: link,
+            netlink: netlink,
+        }
     }
 
-    pub fn lookup<'a>(&'a mut self, addr: &Ipv4Addr) -> Option<&'a MacAddr> {
-        self.entries.get(addr).map(|e| &e.mac)
+    pub fn lookup<'a>(&'a mut self, addr: &Ipv4Addr) -> Option<MacAddr> {
+        if let Some(result) = self.entries.get(addr).map(|e| e.mac) {
+            return Some(result)
+        } else {
+
+            let entries = &mut self.entries;
+            // TODO Put on negative ttl? Trigger arp by sending a packet? Log
+            // status?
+            let neighbours = self.netlink.iter_neighbours(Some(&self.link)).unwrap().collect::<Vec<_>>();
+            for neighbour in neighbours {
+                if let Some(mac) = neighbour.get_ll_addr() {
+                    if let Some(IpAddr::V4(ipaddr)) = neighbour.get_destination() {
+             //           self.add(&ipaddr, &mac);
+            entries.insert(ipaddr,
+                                CacheEntry {
+                                    mac: mac,
+                                    expires: SystemTime::now() + Duration::new(30, 0),
+                                });
+                    }
+                }
+            }
+            match entries.get(addr).map(|e| e.mac) {
+                Some(result) => Some(result),
+                None => {
+                    None
+                    // TODO: trigger a lookup by emitting a packet to the destination address, then
+                    // return None.
+                }
+            }
+        }
     }
 
     pub fn add(&mut self, ip: &Ipv4Addr, mac: &MacAddr) {

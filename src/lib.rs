@@ -1,6 +1,7 @@
 // Copyright (c) 2016 Robert Collins. Licensed under the Apache-2.0 license.
 extern crate netmap;
 extern crate pnet;
+extern crate pnetlink;
 
 use std::hash::{Hash, SipHasher, Hasher};
 use std::net::Ipv4Addr;
@@ -132,7 +133,7 @@ pub fn move_packets(src: &mut netmap::NetmapDescriptor,
                     interface_ipv4: &Ipv4Addr,
                     interface_mac: &MacAddr,
                     target_ipv4: &Ipv4Addr,
-                    target_mac: &MacAddr)
+                    arp_cache: &mut arpcache::Cache)
                     -> Result<TransferStatus, error::BrokenRail> {
     {
         // We need up to three iterators:
@@ -176,16 +177,18 @@ pub fn move_packets(src: &mut netmap::NetmapDescriptor,
                             };
                             // We received it, now we're sending it.
                             {
-                            let t = packet.get_destination();
-                            packet.set_source(t);
+                                let t = packet.get_destination();
+                                packet.set_source(t);
                             }
-                            packet.set_destination(*target_mac);
-                            if let Some(ref mut ip) = MutableIpv4Packet::new(packet.payload_mut()) {
+                            let ip_pkt_dest;
+                            if let Some(ref mut ip) =
+                                   MutableIpv4Packet::new(packet.payload_mut()) {
                                 {
                                     let t = ip.get_destination();
                                     ip.set_source(t);
                                 }
-                                ip.set_destination(*target_ipv4);
+                                ip_pkt_dest = *target_ipv4;
+                                ip.set_destination(ip_pkt_dest);
                                 // let tmp_mac = packet.get_source();
                                 // packet.set_source(packet.get_destination());
                                 // packet.set_destination(tmp_mac);
@@ -196,7 +199,22 @@ pub fn move_packets(src: &mut netmap::NetmapDescriptor,
                                 // - update outer dest IP
                                 // profit
                             } else {
-                                return Err(error::BrokenRail::BadPacket);
+                                // Not a valid IPv4 packet - discard it: 
+                                continue 'rx_slot;
+                                // return Err(error::BrokenRail::BadPacket);
+                            }
+                            // ////// move ipv4 lookup to outside; set ipv4, then
+                            //do arp cache lookup - helper fn time?
+                            match arp_cache.lookup(&ip_pkt_dest) {
+                                Some(target_mac) => {
+                                    packet.set_destination(target_mac);
+                                }
+                                None => {
+                                    // println!("Dropping {:?}", packet);
+                                    // Drop the packet: without a spare buffer to put the packet
+                                    // in, the recieve ring will rapidly block.
+                                    continue 'rx_slot;
+                                }
                             }
                         };
                         if let Some(tx_slot_buf) = maybe_tx_slot_buf {
@@ -217,6 +235,8 @@ pub fn move_packets(src: &mut netmap::NetmapDescriptor,
             }
         }
     };
+    // These need a comment : the use of early return may interact. Someone should think of these
+    // things!
     for ring in src.rx_iter() {
         ring.head_from_cur();
     }

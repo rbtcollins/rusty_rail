@@ -3,6 +3,7 @@ extern crate libc;
 
 extern crate netmap;
 extern crate pnet;
+extern crate pnetlink;
 
 extern crate rusty_rail;
 
@@ -12,9 +13,12 @@ use std::io;
 use std::net::{IpAddr, Ipv4Addr};
 
 // use netmap::Direction;
-use pnet::datalink::NetworkInterface;
-use pnet::util::get_network_interfaces;
+use pnet::datalink::{interfaces, NetworkInterface};
 
+use pnetlink::packet::netlink::NetlinkConnection;
+use pnetlink::packet::route::link::Links;
+
+use rusty_rail::arpcache;
 use rusty_rail::configuration::Config;
 use rusty_rail::error::BrokenRail;
 use rusty_rail::{move_packets, TransferStatus};
@@ -92,15 +96,18 @@ fn stuff() -> Result<(), BrokenRail> {
     let mut pollfds: Vec<libc::pollfd> = Vec::with_capacity(2);
     let config = try!(Config::new(env::vars()));
 
-    let interfaces = get_network_interfaces();
     let interface_names_match = {
         |iface: &NetworkInterface| iface.name == config.device
     };
-    let interface = interfaces.into_iter()
+    let interface = interfaces().into_iter()
         .filter(interface_names_match)
         .next()
         .unwrap();
     let interface_ipv4 = try!(extract_ipv4(&interface));
+
+    let mut netlink = NetlinkConnection::new();
+    let nl_link = netlink.get_link_by_name(&config.device).unwrap().unwrap();
+    let mut arp_cache = arpcache::Cache::new(nl_link, netlink);
     println!("interface {}", interface.mac_address());
     let interface_mac = interface.mac_address();
     // netmap-rs iterators lock the whole NetmapDescriptor, so we open two descriptors for the
@@ -143,7 +150,7 @@ fn stuff() -> Result<(), BrokenRail> {
                                 &interface_ipv4,
                                 &interface_mac,
                                 &config.target_ip,
-                                &config.target_mac)) {
+                                &mut arp_cache)) {
             TransferStatus::BlockedDestination |
             TransferStatus::BlockedWire => {
                 host_read = false;
@@ -158,7 +165,7 @@ fn stuff() -> Result<(), BrokenRail> {
                                 &interface_ipv4,
                                 &interface_mac,
                                 &config.target_ip,
-                                &config.target_mac)) {
+                                &mut arp_cache)) {
             TransferStatus::BlockedDestination => wire_read = false,
             TransferStatus::BlockedWire => host_read = false,
             TransferStatus::Complete => (),

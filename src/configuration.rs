@@ -9,7 +9,6 @@ use super::error;
 
 pub struct Config {
     pub device: String,
-    pub target_mac: MacAddr,
     pub target_ip: Ipv4Addr,
 }
 
@@ -19,11 +18,9 @@ impl Config {
     {
         let vars: BTreeMap<String, String> = vars.collect();
         let target_ip = Ipv4Addr::from_str(&vars.get("RR_TARGET_IP").unwrap()).unwrap();
-        let target_mac = MacAddr::from_str(&vars.get("RR_TARGET_MAC").unwrap()).unwrap();
         Ok(Config {
             device: vars.get("RR_DEVICE").unwrap().clone(),
             target_ip: target_ip,
-            target_mac: target_mac,
         })
     }
 }
@@ -35,8 +32,6 @@ fn set_variables() {
                 ("RR_TARGET_IP".to_string(), "192.0.2.1".to_string())];
     let config = Config::new(vars.iter().cloned()).unwrap();
     assert_eq!(config.device, "wlan0");
-    assert_eq!(config.target_mac,
-               MacAddr::from_str("ab:cd:ef:01:23:45").unwrap());
     assert_eq!(config.target_ip, Ipv4Addr::from_str("192.0.2.1").unwrap());
 }
 
