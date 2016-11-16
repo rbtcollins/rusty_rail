@@ -9,6 +9,7 @@ use pnet::util::MacAddr;
 use pnetlink::packet::netlink::NetlinkConnection;
 use pnetlink::packet::route::addr::IpAddr;
 use pnetlink::packet::route::link::Link;
+use pnetlink::packet::route::link::Links;
 use pnetlink::packet::route::neighbour::{Neighbour,Neighbours};
 
 pub struct CacheEntry {
@@ -88,9 +89,11 @@ impl Cache {
 
 #[test]
 fn add_and_lookup_expire() {
-    let mut c = Cache::new();
+    let mut netlink = NetlinkConnection::new();
+    let nl_link = netlink.get_link_by_name("eth0").unwrap().unwrap();
+    let mut c = Cache::new(nl_link, netlink);
     let target_mac = MacAddr::from_str("aa:aa:aa:aa:aa:aa").unwrap();
-    let some_ip = Ipv4Addr::from_str("127.0.0.1").unwrap();
+    let some_ip = Ipv4Addr::from_str("127.0.0.2").unwrap();
     let past = SystemTime::now() - Duration::new(1, 0);
     c.add(&some_ip, &target_mac);
     c.lookup(&some_ip).unwrap();

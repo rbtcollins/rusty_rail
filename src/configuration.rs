@@ -28,7 +28,6 @@ impl Config {
 #[test]
 fn set_variables() {
     let vars = [("RR_DEVICE".to_string(), "wlan0".to_string()),
-                ("RR_TARGET_MAC".to_string(), "ab:cd:ef:01:23:45".to_string()),
                 ("RR_TARGET_IP".to_string(), "192.0.2.1".to_string())];
     let config = Config::new(vars.iter().cloned()).unwrap();
     assert_eq!(config.device, "wlan0");
@@ -39,17 +38,7 @@ fn set_variables() {
 #[should_panic]
 #[allow(unused_must_use)]
 fn no_device_error() {
-    let vars = [("RR_TARGET_MAC".to_string(), "ab:cd:ef:01:23:45".to_string()),
-                ("RR_TARGET_IP".to_string(), "192.0.2.1".to_string())];
-    Config::new(vars.iter().cloned());
-}
-
-#[test]
-#[should_panic]
-#[allow(unused_must_use)]
-fn no_mac_error() {
-    let vars = [("RR_DEVICE".to_string(), "wlan0".to_string()),
-                ("RR_TARGET_IP".to_string(), "192.0.2.1".to_string())];
+    let vars = [("RR_TARGET_IP".to_string(), "192.0.2.1".to_string())];
     Config::new(vars.iter().cloned());
 }
 
@@ -57,7 +46,6 @@ fn no_mac_error() {
 #[should_panic]
 #[allow(unused_must_use)]
 fn no_ip_error() {
-    let vars = [("RR_TARGET_MAC".to_string(), "ab:cd:ef:01:23:45".to_string()),
-                ("RR_DEVICE".to_string(), "wlan0".to_string())];
+    let vars = [("RR_DEVICE".to_string(), "wlan0".to_string())];
     Config::new(vars.iter().cloned());
 }
