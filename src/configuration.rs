@@ -9,7 +9,7 @@ use super::error;
 
 pub struct Config {
     pub device: String,
-    pub target_ip: Ipv4Addr,
+    pub target_ips: Vec<Ipv4Addr>,
 }
 
 impl Config {
@@ -17,10 +17,12 @@ impl Config {
         where I: Iterator<Item = (String, String)>
     {
         let vars: BTreeMap<String, String> = vars.collect();
-        let target_ip = Ipv4Addr::from_str(&vars.get("RR_TARGET_IP").unwrap()).unwrap();
+        let ipstring = &vars.get("RR_TARGET_IPS").unwrap();
+        let target_ips: Vec<Ipv4Addr> =
+            ipstring.split(";").map(|i| Ipv4Addr::from_str(&i).unwrap()).collect();
         Ok(Config {
             device: vars.get("RR_DEVICE").unwrap().clone(),
-            target_ip: target_ip,
+            target_ips: target_ips,
         })
     }
 }
@@ -28,17 +30,29 @@ impl Config {
 #[test]
 fn set_variables() {
     let vars = [("RR_DEVICE".to_string(), "wlan0".to_string()),
-                ("RR_TARGET_IP".to_string(), "192.0.2.1".to_string())];
+                ("RR_TARGET_IPS".to_string(), "192.0.2.1".to_string())];
     let config = Config::new(vars.iter().cloned()).unwrap();
     assert_eq!(config.device, "wlan0");
-    assert_eq!(config.target_ip, Ipv4Addr::from_str("192.0.2.1").unwrap());
+    assert_eq!(config.target_ips[0],
+               Ipv4Addr::from_str("192.0.2.1").unwrap());
+}
+
+#[test]
+fn multiple_ips() {
+    let vars = [("RR_DEVICE".to_string(), "wlan0".to_string()),
+                ("RR_TARGET_IPS".to_string(), "192.0.2.1;192.0.2.2".to_string())];
+    let config = Config::new(vars.iter().cloned()).unwrap();
+    assert_eq!(config.device, "wlan0");
+    assert_eq!(config.target_ips,
+               vec![Ipv4Addr::from_str("192.0.2.1").unwrap(),
+                    Ipv4Addr::from_str("192.0.2.2").unwrap()]);
 }
 
 #[test]
 #[should_panic]
 #[allow(unused_must_use)]
 fn no_device_error() {
-    let vars = [("RR_TARGET_IP".to_string(), "192.0.2.1".to_string())];
+    let vars = [("RR_TARGET_IPS".to_string(), "192.0.2.1".to_string())];
     Config::new(vars.iter().cloned());
 }
 
@@ -47,5 +61,14 @@ fn no_device_error() {
 #[allow(unused_must_use)]
 fn no_ip_error() {
     let vars = [("RR_DEVICE".to_string(), "wlan0".to_string())];
+    Config::new(vars.iter().cloned());
+}
+
+#[test]
+#[should_panic]
+#[allow(unused_must_use)]
+fn zero_length_ips_error() {
+    let vars = [("RR_DEVICE".to_string(), "wlan0".to_string()),
+                ("RR_TARGET_IPS".to_string(), "".to_string())];
     Config::new(vars.iter().cloned());
 }
