@@ -3,3 +3,5 @@ Cargo.lock
 *~
 .*.sw?
 .cargo
+*.pyc
+*.bk
