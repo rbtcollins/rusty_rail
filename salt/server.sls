@@ -8,7 +8,7 @@ system:
 hn0.0:
   network.managed:
   - type: alias
-  - ipaddr: 10.1.0.{{ salt['rr.hostnumber'](grains['id']) }}
+  - ipaddr: 10.1.0.1
   - netmask: 255.255.255.0
 
 gre0:
@@ -20,7 +20,7 @@ gre0:
   - tunnel_addr: server{{salt['rr.hostnumber'](grains['id'])}}.mshome.net
 # nodes own hostname because the LB can't route to the non-on-net address yet
 # (and perhaps we simply don't need to do that?)
-#  - tunnel_addr: 10.1.0.{{ salt['rr.hostnumber'](grains['id']) }}
+#  - tunnel_addr: 10.1.0.1
 # NB: tunnel_peer won't be used as we won't ever send traffic to 172.16.0.1...
 # and we're not going to route the client through the tunnel since we want DSR
 # - tunnel peer is the LB because the src address is filtered by the gre stack.
