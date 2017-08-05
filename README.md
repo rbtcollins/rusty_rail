@@ -32,7 +32,7 @@ cargo build
 sudo ethtool -K eth0 tx off rx off gro off tso off gso off
 sudo insmod netmap
 # sudo RUST_BACKTRACE=1 RR_DEVICE=eth0 RR_TARGET_IPS=10.1.0.1 target/debug/rusty_rail
-sudo RUST_BACKTRACE=1 RR_DEVICE=eth0 RR_TARGET_IPS=server1ip target/debug/rusty_rail
+sudo RUST_BACKTRACE=1 RR_DEVICE=eth0 RR_TARGET_IPS="server1ip;server2ip" target/debug/rusty_rail
 ```
 
 # Configuration

@@ -143,13 +143,13 @@ fn stuff() -> Result<(), BrokenRail> {
                 continue;
             }
         }
-        // println!("Host -> Wire");
+        // println!("Host -> out queue");
         match try!(move_packets(&mut nm_host,
                                 &mut nm_out,
                                 None,
                                 &interface_ipv4,
                                 &interface_mac,
-                                &config.target_ips[0],
+                                &config.target_ips,
                                 &mut arp_cache)) {
             TransferStatus::BlockedDestination |
             TransferStatus::BlockedWire => {
@@ -158,13 +158,13 @@ fn stuff() -> Result<(), BrokenRail> {
             }
             TransferStatus::Complete => (),
         }
-        // println!("Wire -> Host queue");
+        // println!("Wire -> Host or out queue");
         match try!(move_packets(&mut nm_in,
                                 &mut nm_host,
                                 Some(&mut nm_out),
                                 &interface_ipv4,
                                 &interface_mac,
-                                &config.target_ips[0],
+                                &config.target_ips,
                                 &mut arp_cache)) {
             TransferStatus::BlockedDestination => wire_read = false,
             TransferStatus::BlockedWire => host_read = false,

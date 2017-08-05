@@ -132,7 +132,7 @@ pub fn move_packets(src: &mut netmap::NetmapDescriptor,
                     mut maybe_wire: Option<&mut netmap::NetmapDescriptor>,
                     interface_ipv4: &Ipv4Addr,
                     interface_mac: &MacAddr,
-                    target_ipv4: &Ipv4Addr,
+                    target_ipv4s: &Vec<Ipv4Addr>,
                     arp_cache: &mut arpcache::Cache)
                     -> Result<TransferStatus, error::BrokenRail> {
     {
@@ -147,6 +147,7 @@ pub fn move_packets(src: &mut netmap::NetmapDescriptor,
         // In future, we could allocate additional buffers from netmap and switch received buffers
         // out of the ring to permit more reads to take place while we process packets - whether
         // thats waiting for tx to free up or using a worker thread pool
+        let target_ipv4 = &target_ipv4s[0];
         let mut dst_slots = dst.tx_iter().flat_map(|tx_ring| tx_ring.iter_mut());
         let mut maybe_wire_slots = match maybe_wire {
             None => None,
