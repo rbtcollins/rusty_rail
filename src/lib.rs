@@ -126,6 +126,11 @@ fn examine_one<'a>(rx_slot_buf: RxSlotBuf) -> Result<Direction, error::BrokenRai
 }
 
 
+pub fn select_destination(target_ipv4s: &Vec<Ipv4Addr>) -> Ipv4Addr {
+    target_ipv4s[0]
+}
+
+
 #[allow(non_upper_case_globals)]
 pub fn move_packets(src: &mut netmap::NetmapDescriptor,
                     dst: &mut netmap::NetmapDescriptor,
@@ -147,7 +152,6 @@ pub fn move_packets(src: &mut netmap::NetmapDescriptor,
         // In future, we could allocate additional buffers from netmap and switch received buffers
         // out of the ring to permit more reads to take place while we process packets - whether
         // thats waiting for tx to free up or using a worker thread pool
-        let target_ipv4 = &target_ipv4s[0];
         let mut dst_slots = dst.tx_iter().flat_map(|tx_ring| tx_ring.iter_mut());
         let mut maybe_wire_slots = match maybe_wire {
             None => None,
@@ -182,13 +186,12 @@ pub fn move_packets(src: &mut netmap::NetmapDescriptor,
                                 packet.set_source(t);
                             }
                             let ip_pkt_dest;
-                            if let Some(ref mut ip) =
-                                   MutableIpv4Packet::new(packet.payload_mut()) {
+                            if let Some(ref mut ip) = MutableIpv4Packet::new(packet.payload_mut()) {
                                 {
                                     let t = ip.get_destination();
                                     ip.set_source(t);
                                 }
-                                ip_pkt_dest = *target_ipv4;
+                                ip_pkt_dest = select_destination(target_ipv4s);
                                 ip.set_destination(ip_pkt_dest);
                                 // let tmp_mac = packet.get_source();
                                 // packet.set_source(packet.get_destination());
@@ -200,12 +203,12 @@ pub fn move_packets(src: &mut netmap::NetmapDescriptor,
                                 // - update outer dest IP
                                 // profit
                             } else {
-                                // Not a valid IPv4 packet - discard it: 
+                                // Not a valid IPv4 packet - discard it:
                                 continue 'rx_slot;
                                 // return Err(error::BrokenRail::BadPacket);
                             }
                             // ////// move ipv4 lookup to outside; set ipv4, then
-                            //do arp cache lookup - helper fn time?
+                            // do arp cache lookup - helper fn time?
                             match arp_cache.lookup(&ip_pkt_dest) {
                                 Some(target_mac) => {
                                     packet.set_destination(target_mac);

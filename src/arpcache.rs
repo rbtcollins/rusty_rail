@@ -10,7 +10,7 @@ use pnetlink::packet::netlink::NetlinkConnection;
 use pnetlink::packet::route::addr::IpAddr;
 use pnetlink::packet::route::link::Link;
 use pnetlink::packet::route::link::Links;
-use pnetlink::packet::route::neighbour::{Neighbour,Neighbours};
+use pnetlink::packet::route::neighbour::{Neighbour, Neighbours};
 
 pub struct CacheEntry {
     pub mac: MacAddr,
@@ -34,22 +34,23 @@ impl Cache {
 
     pub fn lookup<'a>(&'a mut self, addr: &Ipv4Addr) -> Option<MacAddr> {
         if let Some(result) = self.entries.get(addr).map(|e| e.mac) {
-            return Some(result)
+            return Some(result);
         } else {
 
             let entries = &mut self.entries;
             // TODO Put on negative ttl? Trigger arp by sending a packet? Log
             // status?
-            let neighbours = self.netlink.iter_neighbours(Some(&self.link)).unwrap().collect::<Vec<_>>();
+            let neighbours =
+                self.netlink.iter_neighbours(Some(&self.link)).unwrap().collect::<Vec<_>>();
             for neighbour in neighbours {
                 if let Some(mac) = neighbour.get_ll_addr() {
                     if let Some(IpAddr::V4(ipaddr)) = neighbour.get_destination() {
-             //           self.add(&ipaddr, &mac);
-            entries.insert(ipaddr,
-                                CacheEntry {
-                                    mac: mac,
-                                    expires: SystemTime::now() + Duration::new(30, 0),
-                                });
+                        //           self.add(&ipaddr, &mac);
+                        entries.insert(ipaddr,
+                                       CacheEntry {
+                                           mac: mac,
+                                           expires: SystemTime::now() + Duration::new(30, 0),
+                                       });
                     }
                 }
             }
