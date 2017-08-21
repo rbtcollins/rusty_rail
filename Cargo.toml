@@ -6,6 +6,7 @@ authors = ["Robert Collins <robertc@robertcollins.net>"]
 [dependencies]
 libc="*"
 pnetlink= { version="*", git = "https://github.com/rbtcollins/pnetlink" }
+siphasher = "~0.1"
 
 [dependencies.netmap]
 git = "https://github.com/rbtcollins/netmap-rs"

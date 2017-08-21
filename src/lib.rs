@@ -2,8 +2,9 @@
 extern crate netmap;
 extern crate pnet;
 extern crate pnetlink;
+extern crate siphasher;
 
-use std::hash::{Hash, SipHasher, Hasher};
+use std::hash::{Hash, Hasher};
 use std::net::Ipv4Addr;
 
 use netmap::{NetmapSlot, NetmapRing};
@@ -14,10 +15,13 @@ use pnet::packet::{MutablePacket, Packet};
 use pnet::packet::ip::IpNextHeaderProtocols::Gre;
 use pnet::packet::gre;
 use pnet::util::MacAddr;
+use siphasher::sip::{SipHasher};
 
 pub mod arpcache;
 pub mod configuration;
 pub mod error;
+pub mod primes;
+pub mod consistenthash;
 
 enum Direction {
     Destination,
