@@ -4,9 +4,100 @@
 
 use std::hash::{Hash, Hasher};
 
-use siphasher::sip::{SipHasher};
+use siphasher::sip::SipHasher;
 
 use super::primes;
+
+pub struct Backend {
+    pub name: String,
+    /// Should this backend receive new traffic.
+    pub live: bool,
+    pub permutation: Vec<u32>, /* weight
+                                * addressIPV4 | addressIPV6 */
+}
+
+impl Backend {
+    pub fn new(name: String) -> Backend {
+        Backend {
+            name: name,
+            live: true,
+            permutation: vec![],
+        }
+    }
+}
+
+pub struct ConsistentHash {
+    // vector of known backends. References to this are held by lookup using their offset: never
+    // shrink except by marking the tail nodes not alive, populating the lookup table, then finally
+    // popping.
+    pub backends: Vec<Backend>,
+    pub lookup: Vec<u32>,
+}
+
+
+impl ConsistentHash {
+    pub fn new() -> ConsistentHash {
+        ConsistentHash {
+            backends: vec![],
+            lookup: vec![],
+        }
+    }
+
+    /// Populate the lookup table based on the current backend settings.
+    ///
+    /// ```
+    /// use rusty_rail::consistenthash;
+    ///
+    /// let mut c = consistenthash::ConsistentHash::new();
+    /// c.backends.push(consistenthash::Backend::new("server-1".to_string()));
+    /// c.backends.push(consistenthash::Backend::new("server-2".to_string()));
+    /// c.backends.push(consistenthash::Backend::new("server-3".to_string()));
+    /// c.populate();
+    /// assert_eq!(c.lookup,
+    /// vec!
+    /// [2, 1, 1, 0, 1, 2, 0, 1, 2, 1, 2, 0, 2, 2, 0, 2, 1, 0, 2, 1, 2, 2, 0, 2, 0, 0, 1, 0, 1, 2,
+    /// 0, 1, 0, 0, 2, 0, 2, 2, 1, 2, 1, 0, 2, 1, 2, 2, 0, 2, 0, 0, 2, 0, 1, 0, 0, 1, 0, 0, 2, 0, 0,
+    /// 1, 1, 2, 1, 0, 2, 1, 0, 1, 0, 2, 0, 0, 2, 0, 0, 0, 0, 1, 0, 0, 1, 1, 0, 1, 1, 2, 1, 0, 1, 1,
+    /// 0, 1, 0, 2, 0, 0, 1, 0, 0, 2, 0, 0, 0, 1, 1, 1, 2, 1, 1, 2, 1, 2, 1, 1, 2, 1, 2, 0, 2, 2, 1,
+    /// 2, 2, 2, 2, 1, 2, 2, 1, 1, 2, 1, 1, 0, 1, 2, 1, 1, 2, 1, 2, 0, 2, 2, 0, 2, 0, 2, 2, 1, 2, 2,
+    /// 0, 2, 1, 2, 1, 0, 1, 2, 0, 1, 0, 1, 2, 0, 1, 2, 0, 2, 0, 2, 2, 1, 2, 2, 0, 2, 1, 0, 2, 0, 2,
+    /// 0, 0, 1, 0, 0, 2, 0, 1, 0, 0, 2, 1, 0, 2, 1, 2, 1, 0, 2, 1, 0, 2, 0, 2, 0, 0, 1, 0, 0, 0, 0,
+    /// 1, 1, 1, 2, 1, 0, 1, 1, 0, 1, 0, 2, 1, 0, 1, 0, 0, 0, 0, 2, 0, 0, 0, 0, 1, 1, 1, 1, 1, 0, 1,
+    /// 1, 0, 1, 0, 1, 1, 2, 1, 2, 2, 2, 2, 1, 2, 2, 1, 2, 1, 1, 1, 0, 1, 2, 1, 1, 2, 1, 2, 0, 1, 2,
+    /// 1, 2, 0, 2, 2, 0, 2, 2, 2, 2, 1, 2, 2, 0, 1]);
+    /// ```
+    pub fn populate(&mut self) {
+        // This is 'approximately' 100x the number of backends; could look for the next higher
+        // prime in future to ensure that.
+        let lookup_size = self.backends.len() * 100;
+        let p = primes::primes(lookup_size);
+        let lookup_size = p[p.len() - 1] as u32;
+        for backend in &mut self.backends {
+            if backend.permutation.len() != lookup_size as usize {
+                backend.permutation = permute_backend(&backend.name, lookup_size)
+            }
+        }
+        let mut next = vec![0; self.backends.len()];
+        self.lookup = vec![u32::max_value();lookup_size as usize];
+        let mut allocated = 0;
+        loop {
+            for (i, backend) in self.backends.iter().enumerate() {
+                let mut candidate = backend.permutation[next[i]];
+                while self.lookup[candidate as usize] != u32::max_value() {
+                    // Find next unallocated position from backend.
+                    next[i] += 1;
+                    candidate = backend.permutation[next[i]];
+                }
+                self.lookup[candidate as usize] = i as u32;
+                next[i] += 1;
+                allocated += 1;
+                if allocated == lookup_size {
+                    return;
+                }
+            }
+        }
+    }
+}
 
 /// Generate permutations for a given offset, skip, pool
 ///
@@ -30,11 +121,12 @@ pub fn permutations(offset: u32, skip: u32, pool_size: u32) -> Vec<u32> {
 /// ```
 /// use rusty_rail::consistenthash::permute_backend;
 ///
-/// assert_eq!(permute_backend("fred".to_string(), 7), vec![1, 0, 6, 5, 4, 3, 2]);
-/// assert_eq!(permute_backend("ralph".to_string(), 7), vec![3, 2, 1, 0, 6, 5, 4]);
-/// assert_eq!(permute_backend("larry".to_string(), 7), vec![4, 0, 3, 6, 2, 5, 1]);
+/// assert_eq!(permute_backend("fred", 7), vec![1, 0, 6, 5, 4, 3, 2]);
+/// assert_eq!(permute_backend("ralph", 7), vec![3, 2, 1, 0, 6, 5, 4]);
+/// assert_eq!(permute_backend("larry", 7), vec![4, 0, 3, 6, 2, 5, 1]);
 /// ```
-pub fn permute_backend(name: String, pool_size: u32) -> Vec<u32> {
+pub fn permute_backend(name: &str, pool_size: u32) -> Vec<u32> {
+    // May be faster to generate just-in-time as an iterator: profile eventually.
     let mut s = SipHasher::new();
     name.hash(&mut s);
     let offset = (s.finish() % pool_size as u64) as u32;

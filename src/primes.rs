@@ -14,7 +14,7 @@ fn examples() {
 }
 
 /// Returns all primes less than or equal to limit in a vector
-fn primes(limit: usize) -> Vec<u32> {
+pub fn primes(limit: usize) -> Vec<u32> {
     let sqrt = (limit as f64).sqrt().ceil() as usize;
     let mut res: Vec<u32> = Vec::with_capacity(sqrt);
     let mut sieve = vec![false; limit+1];
