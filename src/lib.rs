@@ -15,7 +15,9 @@ use pnet::packet::{MutablePacket, Packet};
 use pnet::packet::ip::IpNextHeaderProtocols::Gre;
 use pnet::packet::gre;
 use pnet::util::MacAddr;
-use siphasher::sip::{SipHasher};
+use siphasher::sip::SipHasher;
+
+use consistenthash::ConsistentHash;
 
 pub mod arpcache;
 pub mod configuration;
@@ -26,7 +28,7 @@ pub mod consistenthash;
 enum Direction {
     Destination,
     Drop,
-    Wire,
+    Wire(Ipv4Addr),
 }
 
 pub enum TransferStatus {
@@ -41,7 +43,8 @@ fn hash_ipv4_packet(packet: &Ipv4Packet) -> u64 {
     packet.get_source().hash(&mut s);
     packet.get_destination().hash(&mut s);
     packet.get_next_level_protocol().hash(&mut s);
-    // Should we add ports in here? Maglev does, but no reason is given.
+    // Should we add ports in here for udp/tcp? Maglev does, but no reason is given.
+    // (Assumed reason is spreading traffic from the same client to differnet backends.)
     s.finish()
 }
 
@@ -79,7 +82,7 @@ type RxSlotBuf<'a> = (&'a mut netmap::RxSlot, &'a mut [u8]);
 /// Determine the interface (and when appropriate new targets) for a single packet.
 ///
 /// rx_slot_buf is a packet that has been received.
-fn examine_one<'a>(rx_slot_buf: RxSlotBuf) -> Result<Direction, error::BrokenRail> {
+fn examine_one<'a>(rx_slot_buf: RxSlotBuf, routes:&ConsistentHash) -> Result<Direction, error::BrokenRail> {
     let packet = match EthernetPacket::new(rx_slot_buf.1) {
         Some(packet) => packet,
         None => return Err(error::BrokenRail::BadPacket),
@@ -93,13 +96,17 @@ fn examine_one<'a>(rx_slot_buf: RxSlotBuf) -> Result<Direction, error::BrokenRai
                             match gre.get_protocol_type() {
                                 0x0800 => {
                                     if let Some(inner_ip) = Ipv4Packet::new(gre.payload()) {
-                                        println!("Inner IP {:?} {:?} {:?}",
+                                        let hash = hash_ipv4_packet(&inner_ip);
+                                        let target_ipv4 = select_destination(routes, &inner_ip);
+                                        println!("Inner IP {:?} {:?} {:?} {:?}",
                                                  inner_ip.get_source(),
                                                  inner_ip.get_destination(),
-                                                 hash_ipv4_packet(&inner_ip));
+                                                 hash, target_ipv4);
+                                        return Ok(Direction::Wire(target_ipv4));
                                     }
                                     // try!(move_packet(rx_slot_buf, tx_slot_buf));
-                                    return Ok(Direction::Wire);
+                                    // if we can't handle the packet, drop it.
+                                    return Ok(Direction::Drop);
                                 }
                                 // Drop all other gre packets as noise
                                 _ => return Ok(Direction::Drop),
@@ -130,8 +137,10 @@ fn examine_one<'a>(rx_slot_buf: RxSlotBuf) -> Result<Direction, error::BrokenRai
 }
 
 
-pub fn select_destination(target_ipv4s: &Vec<Ipv4Addr>) -> Ipv4Addr {
-    target_ipv4s[0]
+pub fn select_destination(routes: &ConsistentHash, packet: &Ipv4Packet) -> Ipv4Addr {
+    let hash = hash_ipv4_packet(&packet) as usize;
+    let backend_idx = routes.lookup[hash % routes.lookup.len()];
+    routes.backends[backend_idx as usize].target
 }
 
 
@@ -141,7 +150,7 @@ pub fn move_packets(src: &mut netmap::NetmapDescriptor,
                     mut maybe_wire: Option<&mut netmap::NetmapDescriptor>,
                     interface_ipv4: &Ipv4Addr,
                     interface_mac: &MacAddr,
-                    target_ipv4s: &Vec<Ipv4Addr>,
+                    routes: &ConsistentHash,
                     arp_cache: &mut arpcache::Cache)
                     -> Result<TransferStatus, error::BrokenRail> {
     {
@@ -168,18 +177,18 @@ pub fn move_packets(src: &mut netmap::NetmapDescriptor,
                     None => break 'rx,
                     Some((rx_slot, buf)) => {
                         // We have a received packet.
-                        let direction = try!(examine_one((rx_slot, buf)));
+                        let direction = try!(examine_one((rx_slot, buf), routes));
                         let maybe_tx_slot_buf = match direction {
                             Direction::Destination => dst_slots.next(),
                             Direction::Drop => continue 'rx_slot,
-                            Direction::Wire => {
+                            Direction::Wire(target_ipv4) => {
                                 match maybe_wire_slots {
                                     None => dst_slots.next(),
                                     Some(ref mut wire_slots) => wire_slots.next(),
                                 }
                             }
                         };
-                        if let Direction::Wire = direction {
+                        if let Direction::Wire(target_ipv4) = direction {
                             let mut packet = match MutableEthernetPacket::new(buf) {
                                 Some(packet) => packet,
                                 None => return Err(error::BrokenRail::BadPacket),
@@ -189,13 +198,12 @@ pub fn move_packets(src: &mut netmap::NetmapDescriptor,
                                 let t = packet.get_destination();
                                 packet.set_source(t);
                             }
-                            let ip_pkt_dest;
+                            let ip_pkt_dest = target_ipv4;
                             if let Some(ref mut ip) = MutableIpv4Packet::new(packet.payload_mut()) {
                                 {
                                     let t = ip.get_destination();
                                     ip.set_source(t);
                                 }
-                                ip_pkt_dest = select_destination(target_ipv4s);
                                 ip.set_destination(ip_pkt_dest);
                                 // let tmp_mac = packet.get_source();
                                 // packet.set_source(packet.get_destination());
@@ -235,7 +243,7 @@ pub fn move_packets(src: &mut netmap::NetmapDescriptor,
                             return Ok(match direction {
                                 Direction::Destination => TransferStatus::BlockedDestination,
                                 Direction::Drop => panic!("Unreachable"),
-                                Direction::Wire => TransferStatus::BlockedWire,
+                                Direction::Wire(target_ipv4) => TransferStatus::BlockedWire,
                             });
                         }
                     }

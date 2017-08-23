@@ -6,9 +6,11 @@ use std::str::FromStr;
 use pnet::util::MacAddr;
 
 use super::error;
+use super::consistenthash::{Backend, ConsistentHash};
 
 pub struct Config {
     pub device: String,
+    pub routes: ConsistentHash,
     pub target_ips: Vec<Ipv4Addr>,
 }
 
@@ -20,8 +22,16 @@ impl Config {
         let ipstring = &vars.get("RR_TARGET_IPS").unwrap();
         let target_ips: Vec<Ipv4Addr> =
             ipstring.split(";").map(|i| Ipv4Addr::from_str(&i).unwrap()).collect();
+        let mut hash = ConsistentHash::new();
+        for target_name in ipstring.split(";") {
+            let ip = Ipv4Addr::from_str(&target_name).unwrap();
+            let backend = Backend::new(&target_name, ip);
+            hash.backends.push(backend);
+        }
+        hash.populate();
         Ok(Config {
             device: vars.get("RR_DEVICE").unwrap().clone(),
+            routes: hash,
             target_ips: target_ips,
         })
     }

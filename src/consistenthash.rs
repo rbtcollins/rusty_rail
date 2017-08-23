@@ -13,7 +13,7 @@ pub struct Backend {
     pub name: String,
     /// Should this backend receive new traffic.
     pub live: bool,
-    pub target: Ipv4Addr, /* | Ipv6Addr, weight  */
+    pub target: Ipv4Addr, // | Ipv6Addr, weight
     pub permutation: Vec<u32>,
 }
 

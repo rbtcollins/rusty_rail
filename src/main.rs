@@ -149,7 +149,7 @@ fn stuff() -> Result<(), BrokenRail> {
                                 None,
                                 &interface_ipv4,
                                 &interface_mac,
-                                &config.target_ips,
+                                &config.routes,
                                 &mut arp_cache)) {
             TransferStatus::BlockedDestination |
             TransferStatus::BlockedWire => {
@@ -164,7 +164,7 @@ fn stuff() -> Result<(), BrokenRail> {
                                 Some(&mut nm_out),
                                 &interface_ipv4,
                                 &interface_mac,
-                                &config.target_ips,
+                                &config.routes,
                                 &mut arp_cache)) {
             TransferStatus::BlockedDestination => wire_read = false,
             TransferStatus::BlockedWire => host_read = false,
