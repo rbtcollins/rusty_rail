@@ -3,6 +3,7 @@
 // Consistent hashing for selecting backends.
 
 use std::hash::{Hash, Hasher};
+use std::net::Ipv4Addr;
 
 use siphasher::sip::SipHasher;
 
@@ -12,15 +13,16 @@ pub struct Backend {
     pub name: String,
     /// Should this backend receive new traffic.
     pub live: bool,
-    pub permutation: Vec<u32>, /* weight
-                                * addressIPV4 | addressIPV6 */
+    pub target: Ipv4Addr, /* | Ipv6Addr, weight  */
+    pub permutation: Vec<u32>,
 }
 
 impl Backend {
-    pub fn new(name: String) -> Backend {
+    pub fn new(name: &str, target: Ipv4Addr) -> Backend {
         Backend {
-            name: name,
+            name: name.to_string(),
             live: true,
+            target: target,
             permutation: vec![],
         }
     }
@@ -46,12 +48,18 @@ impl ConsistentHash {
     /// Populate the lookup table based on the current backend settings.
     ///
     /// ```
+    /// use std::net::Ipv4Addr;
+    /// use std::str::FromStr;
+    ///
     /// use rusty_rail::consistenthash;
     ///
     /// let mut c = consistenthash::ConsistentHash::new();
-    /// c.backends.push(consistenthash::Backend::new("server-1".to_string()));
-    /// c.backends.push(consistenthash::Backend::new("server-2".to_string()));
-    /// c.backends.push(consistenthash::Backend::new("server-3".to_string()));
+    /// let tgt = Ipv4Addr::from_str("1.2.3.4").unwrap();
+    /// c.backends.push(consistenthash::Backend::new("server-1", tgt));
+    /// c.backends.push(consistenthash::Backend::new("server-2", tgt));
+    /// c.backends.push(consistenthash::Backend::new("server-3", tgt));
+    /// c.backends.push(consistenthash::Backend::new("server-4", tgt));
+    /// c.backends[3].live = false;
     /// c.populate();
     /// assert_eq!(c.lookup,
     /// vec!
@@ -69,7 +77,7 @@ impl ConsistentHash {
     pub fn populate(&mut self) {
         // This is 'approximately' 100x the number of backends; could look for the next higher
         // prime in future to ensure that.
-        let lookup_size = self.backends.len() * 100;
+        let lookup_size = self.backends.iter().filter(|b| b.live).count() * 100;
         let p = primes::primes(lookup_size);
         let lookup_size = p[p.len() - 1] as u32;
         for backend in &mut self.backends {
@@ -82,6 +90,9 @@ impl ConsistentHash {
         let mut allocated = 0;
         loop {
             for (i, backend) in self.backends.iter().enumerate() {
+                if !backend.live {
+                    continue;
+                }
                 let mut candidate = backend.permutation[next[i]];
                 while self.lookup[candidate as usize] != u32::max_value() {
                     // Find next unallocated position from backend.
