@@ -1,0 +1,94 @@
+# Rusty-rail needs physical testing
+
+Rusty-rail is a line-rate highly available consistent-hash based IP load
+balancer based on the Google maglev paper. While it can be developed on
+commodity hardware, to evaluate its performance and correctness more demanding
+testing is required.
+
+If we can arrange testing from time to time, with each test taking no more than
+1/2 a day including setup and teardown, this would provide immense support to
+the project.
+
+# Requirements
+
+Testing requires some number of clients to generate load, some number of
+servers to serve the clients, and some number of load balancer machines.
+Ideally we would drive Rusty-rail at line rate - 10/40Gbps, though at this
+point I don't know if it is yet capable of that, nor how many clients and
+servers are needed to deliver this.
+
+An initial test run to at least validate that the system can operate in the
+test bed environment would minimally need a single client, load balancer, and
+server.
+
+The RR load balancer software uses the Netmap userspace networking module on
+Linux, so a card with Netmap support is needed to usefully perform performance
+testing - emulated NIC support doesn't achieve the zero-copy performance that
+RR is aimed at.
+
+RR currently uses a direct-server-return model, where an ingress router GRE
+encapsulates traffic directed to the virtual-IP that a service is being
+offered; that GRE traffic is then routed to the load balancer nodes using ECMP
+spraying to balance the traffic across nodes, reduce router state pressure, and
+insulate against load balancer node failures. RR then updates the GRE packet
+and retransmits it to the chosen server, which GRE decapsulates, handles it
+(including e.g. TCP termination), and responds directly to the src IP address.
+
+For instance, consider TCP setup: Client sents a SYN which reaches the router,
+the router GRE encaps and forwards to a load balancer, which updates and
+forwards the still gre encapsulate syn to the server, which decapsulates and
+responds to the SYN with a SYN-ACK which bypasses the LB to go to its local
+router (which may be different), and thus onto the client.
+
++---+ +---+ +---+ +---+
+| C | | R | | L | | S |
++---+ +---+ +---+ +---+
+
+  +----->
+    syn
+        +----->
+          syn(gre)
+              +----->
+               syn(gre)
+        <-----------+
+           syn-ack
+  <-----+
+   syn-ack
+
+
+A minimal-complexity compact testbed which doesn't try to exercise all the possible
+complexities might look like this:
+
++-----+ +-----+ +-----+
+| C1  | | C2  | | CN  |
++--+--+ +--+--+ +--+--+
+   |       |       |
+   +---------------+   Network 1: Clients
+           |           Network 2: LB and Servers
+        +--+---+       Network 3: Virtual IPs
+        |Router|                  Destination LB1/2/3 in GRE with ECMP
+        +--+---+
+           |
+   +---------------+-------+-------+-------+
+   |       |       |       |       |       |
++--+--+ +--+--+ +--+--+ +--+--+ +--+--+ +--+--+
+| LB1 | | LB2 | | LBN | | S1  | | S2  | | SN  |
++-----+ +-----+ +-----+ +-----+ +-----+ +-----+
+
+# Sizing
+
+The minimal scale to exercise things at all would be one client, the router,
+one load balancer and one server - correctness of forwarding decisions is not
+something that a scale test needs to address.
+
+Once operation and deployment into the environment is exercised and validated,
+I would like to ensure full automation of the test bring-up and exercise, and
+then arrange a larger scale exercise intended to find the limits of the current
+code base. Once performance issues identified are believed fixed, arrranging a
+third test and so on would be ideal - but totally at AARNET's discretion :).
+
+In principle a single client and server could saturate the network forwarding
+of the LB node, but typically the overhead of the standard Linux network stack
+makes that prohibitive with small-packet workflows (and RR is optimised for
+dealing with the SYN, ACK-DATA, RST pattern of HTTP requests where line rate
+can mean 14Mpps, which a single server will typically fail to cope with.
