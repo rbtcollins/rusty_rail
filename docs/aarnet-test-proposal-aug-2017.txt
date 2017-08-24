@@ -75,6 +75,12 @@ complexities might look like this:
 | LB1 | | LB2 | | LBN | | S1  | | S2  | | SN  |
 +-----+ +-----+ +-----+ +-----+ +-----+ +-----+
 
+Current testing is aimed at performance, but future iterations will wish to
+increase complexity to ensure that all the possible complications, such as
+having the servers on a remote network from the load balancers, or testing
+tromboning where traffic is routed to a separate load balancer cluster when all
+local servers are down.
+
 # Sizing
 
 The minimal scale to exercise things at all would be one client, the router,

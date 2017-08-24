@@ -6,15 +6,17 @@ paper](http://research.google.com/pubs/pub44824.html)
 # Current status
 
 Bridges a single interface in full passthrough mode to preserve connections to
-host, and directs all GRE packets back out the wire interface.
+host, and directs all GRE packets back out the wire interface to a consistently
+hashed set of backend servers.
 
 # Installation
 
 Rusty rail uses [Netmap](https://github.com/luigirizzo/netmap) - install that
 first.
 
-Netmap transmitted packets don't get offloaded checksums processed, so while
-running Rusty rail offload must be disabled on the interfaces in use:
+Netmap transmitted packets don't get offloaded checksums processed (at least
+with the hyper-v network driver I have been testing with), so while running
+Rusty rail offload must be disabled on the interfaces in use:
 
 ```
 sudo ethtool -K eth0 tx off rx off gro off tso off gso off
@@ -41,6 +43,36 @@ Configuration is via environment variables.
 
 * ``RR_DEVICE`` should be the name of the interface to receive and transmit GRE
   wrapped packets on.
+
+# Design choices
+
+The basic design is inspired by Maglev. 
+
+## Components
+
+The choice of Rust was part my wanting to spend more time working with one of
+the new languages like Rust or Go, and largely a very good fit for the domain:
+we need extremely predictable behaviour in the data plane, and languages with
+garbage collectors or greenthreads do not supply that.
+
+The choice of networking implementation: raw socket vs Netmap vs DPDK vs SR-IOV
+vs IO-Visor XDP is somewhat arbitrary but heavily influenced by my desired to
+spend more time working with Rust. DPDK wants to wrap around much more of the
+program than is convenient with Rust (good integration is of course
+in-principle possible). SR-IOV as the interface for networking would either
+require a new abstraction that can deliver networking in testbeds without
+SR-IOV hardware - or using Netmap/DPDK etc in a VM with the virtualised card -
+not actually changing anything:). XDP is very interesting, and it may well be
+worth looking at refactoring the data plane of Rusty rail out of Netmap and
+into XDP, with control logic staying in Rust. Netmap provides a lightweight
+layer over the actual NIC cards, is compatible with SR-IOV or can also forward
+packets to the kernel stack easily, and while its abstractions are awkward in
+Rust, a little unsafe() goes a long way.
+
+Over time it may be interesting to introduce a modular system to permit
+deployers to make different choices without forking or reimplementing.
+
+## Architecture
 
 # Testing
 
