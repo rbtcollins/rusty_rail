@@ -1,0 +1,13 @@
+language: rust
+sudo: true
+rust:
+- stable
+- nightly
+matrix:
+  allow_failures:
+  - rust: nightly
+# Don't mess with drivers as yet - just build netmap itself.
+before_script:
+- sudo apt-get install linux-headers-$(uname -r)
+- git clone https://github.com/luigirizzo/netmap /tmp/netmap
+- pushd /tmp/netmap/LINUX && ./configure --no-drivers && make && sudo make install && popd
