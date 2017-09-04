@@ -9,6 +9,26 @@ Bridges a single interface in full passthrough mode to preserve connections to
 host, and directs all GRE packets back out the wire interface to a consistently
 hashed set of backend servers.
 
+# Desired but unimplemented features
+
+1. RPC/API for runtime updates: marking servers as unhealthy, and adding and
+   removing servers.
+2. A metrics API endpoint - /healthz style.
+3. Support for discrete backend server sets for different virtual IP addresses.
+4. Pluggable networking: glue into DPDK or XDP.
+   e.g. have the control logic in userspace but forwarding implemented via XDP
+   rather than using netmap to implement the forwarding in userspace.
+5. Alternative routing strategies:
+   - IPinIP
+   - VXLAN or GENEVE encap
+   - regular router - no GRE (and thus requires same-subnet or split routing
+     tables within the infrastructure... but may make the system accessible
+     with routers that cannot do other encap + ECMP spraying).
+6. Learn about server status via ICMP code 3 - if the GRE datagrams cannot be
+   delivered the server is clearly not available and theres no need to wait for
+   monitoring to mark it dead.
+7. IPv6 support.
+
 # Installation
 
 Rusty rail uses [Netmap](https://github.com/luigirizzo/netmap) - install that
@@ -43,6 +63,75 @@ Configuration is via environment variables.
 
 * ``RR_DEVICE`` should be the name of the interface to receive and transmit GRE
   wrapped packets on.
+* ``RR_TARGET_IPS`` should be a ; delimited list of IP addresses to forward to.
+
+# Deployment
+
+Many different topologies are possible - single cluster vs multiple clusters,
+same subnet for load balancers and servers vs different subnets, and possibly
+the use of tromboning back out to the internet to deal with a local cluster
+with no live endpoints.
+
+The simplest deployment is to have a cluster of rusty rail nodes behind a
+router, the servers serving the traffic on the same subnet, and the virtual
+IP addresses that clients will use on a second subnet.
+
++-----+ +-----+ +-----+
+| C1  | | C2  | | CN  |
++--+--+ +--+--+ +--+--+
+   |       |       |
+   +---------------+   Network 1: Clients
+           |           Network 2: LB and Servers
+        +--+---+       Network 3: Virtual IPs
+        |Router|                  Destination LB1/2/3 in GRE with ECMP
+        +--+---+
+           |
+   +---------------+-------+-------+-------+
+   |       |       |       |       |       |
++--+--+ +--+--+ +--+--+ +--+--+ +--+--+ +--+--+
+| LB1 | | LB2 | | LBN | | S1  | | S2  | | SN  |
++-----+ +-----+ +-----+ +-----+ +-----+ +-----+
+
+The traffic flow for a single stream will go from the client to the router,
+be GRE encapsulated there, forwarded to one of the rusty rail nodes, forwarded
+from there (still GRE encapsulated) to a server, where the network stack on the
+server will decapsulate the packets and process the inner packet originally
+encapsulated by the router locally. The returning traffic will bypass rusty
+rail, going from the server directly to the router, and thence to the clients.
+
+## Router configuration
+
+Doc patches providing configuration snippets for router models are welcomed :).
+
+In short though: create N GRE tunnel interfaces on the router pointing each at
+a rusty rail node. Set the forwarding policy on the router to be stateless
+equal cost multipath (or, if you are merely seeking high availability, you
+could configure an active/passive tunnel, depending on down host detection
+to fail over to the second/third etc rusty rail node.
+
+## Rusty rail configuration
+
+Disable card acceleration for host packets, as at least for the hyper-v netmap
+driver, transmit offload doesn't take place when packets are forwarded from
+host to nic via the netmap layer. This doesn't impact rusty rail performance,
+as all the volume traffic is being handled directly on the NIC ring buffers
+rather than via the host networking stack.
+
+## Server configuration
+
+Servers need a local interface with the IP address of the virtual IP(s) they
+will be hosting. Secondly they need to accept GRE traffic from any of the rusty
+rail nodes and decapsulate those packets.
+
+One easy way to do this is to:
+1. Add the virtual IPs as aliases to eth0.
+2. Configure GRE tunnels on the server between it and each rusty rail node.
+
+If large numbers or very dynamic rusty rail node details are in use, consider
+using ovs to configure openflow rules to perform decap in a wildcard manner.
+
+Make sure any reverse path filtering is disabled (or set to local-only) as
+incoming traffic will fail a strict reverse path check.
 
 # Design choices
 
