@@ -1,6 +1,7 @@
 // Copyright (c) 2016 Robert Collins. Licensed under the Apache-2.0 license.
 extern crate libc;
 
+extern crate ipnetwork;
 extern crate netmap;
 extern crate pnet;
 extern crate pnetlink;
@@ -12,6 +13,7 @@ use std::env;
 use std::io;
 use std::net::{IpAddr, Ipv4Addr};
 
+use ipnetwork::IpNetwork;
 // use netmap::Direction;
 use pnet::datalink::{interfaces, NetworkInterface};
 
@@ -80,12 +82,10 @@ fn device_name(device: &String, suffix: &str) -> String {
 
 fn extract_ipv4(interface: &NetworkInterface) -> Result<Ipv4Addr, BrokenRail> {
 
-    if let Some(ref ips) = interface.ips {
-        for ip in ips {
-            if let &IpAddr::V4(ipv4) = ip {
-                println!("{}", ip);
-                return Ok(ipv4);
-            }
+    for ip in &interface.ips {
+        if let &IpNetwork::V4(netv4) = ip {
+            println!("{}", netv4);
+            return Ok(netv4.ip());
         }
     }
     return Err(BrokenRail::NoIPV4Address);
@@ -99,7 +99,8 @@ fn stuff() -> Result<(), BrokenRail> {
     let interface_names_match = {
         |iface: &NetworkInterface| iface.name == config.device
     };
-    let interface = interfaces().into_iter()
+    let interface = interfaces()
+        .into_iter()
         .filter(interface_names_match)
         .next()
         .unwrap();

@@ -1,7 +1,6 @@
 // Copyright (c) 2017 Robert Collins. Licensed under the Apache-2.0 license.
 //
 // Used in implementing the maglev consistent hash.
-extern crate netmap;
 
 #[test]
 fn examples() {

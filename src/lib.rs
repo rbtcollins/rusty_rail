@@ -114,12 +114,9 @@ fn examine_one<'a>(rx_slot_buf: RxSlotBuf, routes:&ConsistentHash) -> Result<Dir
 
                         } else {
                             println!("Failed to process GRE packet");
+                            // in future perhaps forward to host?
                             return Ok(Direction::Drop);
                         }
-                        // Drop (in future forward
-                        // println!("packet {:?}",
-                        //         ip.get_next_level_protocol())
-                        return Ok(Direction::Drop);
                     }
                     // Forward non-GRE
                     _ => return Ok(Direction::Destination),

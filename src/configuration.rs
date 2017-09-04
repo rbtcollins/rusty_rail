@@ -3,8 +3,6 @@ use std::collections::BTreeMap;
 use std::net::Ipv4Addr;
 use std::str::FromStr;
 
-use pnet::util::MacAddr;
-
 use super::error;
 use super::consistenthash::{Backend, ConsistentHash};
 

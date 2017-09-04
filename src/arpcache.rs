@@ -1,16 +1,19 @@
 // Copyright (c) 2016 Robert Collins. Licensed under the Apache-2.0 license.
 use std::collections::BTreeMap;
-use std::net::Ipv4Addr;
+use std::net::{Ipv4Addr, IpAddr};
 #[cfg(test)]
 use std::str::FromStr;
 use std::time::{Duration, SystemTime};
 
 use pnet::util::MacAddr;
 use pnetlink::packet::netlink::NetlinkConnection;
-use pnetlink::packet::route::addr::IpAddr;
 use pnetlink::packet::route::link::Link;
+
+#[cfg(test)]
 use pnetlink::packet::route::link::Links;
-use pnetlink::packet::route::neighbour::{Neighbour, Neighbours};
+#[cfg(test)]
+use pnetlink::packet::route::neighbour::Neighbour;
+use pnetlink::packet::route::neighbour::Neighbours;
 
 pub struct CacheEntry {
     pub mac: MacAddr,
